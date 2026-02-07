@@ -1,0 +1,13 @@
+django>=5.0
+djangorestframework>=3.14
+django-cors-headers>=4.3
+psycopg2-binary>=2.9
+cryptography>=41.0
+python-dotenv>=1.0
+requests>=2.31
+celery>=5.3
+redis>=5.0
+openai>=1.0
+authlib>=1.2
+gunicorn>=21.0
+pyjwt>=2.8
