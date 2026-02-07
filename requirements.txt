@@ -11,3 +11,5 @@ openai>=1.0
 authlib>=1.2
 gunicorn>=21.0
 pyjwt>=2.8
+dj-database-url>=2.0
+whitenoise>=6.0
