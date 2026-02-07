@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: smart-work-sequencer-backend
+    runtime: python
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
+    startCommand: python manage.py migrate && gunicorn config.wsgi:application
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "false"
+      - key: USE_SQLITE
+        value: "true"
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: JIRA_CLIENT_ID
+        sync: false
+      - key: JIRA_CLIENT_SECRET
+        sync: false
+      - key: FRONTEND_URL
+        value: "https://smart-work-sequencer-frontend.vercel.app"
+      - key: CORS_ORIGINS
+        value: "http://localhost:3000,https://smart-work-sequencer-frontend.vercel.app"
+      - key: PYTHON_VERSION
+        value: "3.11.7"
