@@ -14,12 +14,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Security
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-dev-key-change-in-production')
 DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,.railway.app,.vercel.app').split(',')
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,.railway.app,.vercel.app,.run.app').split(',')
 CSRF_TRUSTED_ORIGINS = [
     'https://*.railway.app',
     'https://*.vercel.app',
+    'https://*.run.app',
     'http://localhost:3000',
 ]
+
+# Frontend URL for OAuth redirects
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000')
 
 # Application definition
 INSTALLED_APPS = [

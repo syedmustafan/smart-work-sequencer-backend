@@ -1,17 +1,11 @@
 """
-Authentication URL routes.
+Authentication URL routes - OAuth only (no login/register).
 """
 
 from django.urls import path
 from . import views
 
 urlpatterns = [
-    # User auth
-    path('register/', views.RegisterView.as_view(), name='register'),
-    path('login/', views.LoginView.as_view(), name='login'),
-    path('me/', views.MeView.as_view(), name='me'),
-    path('connections/', views.ConnectionStatusView.as_view(), name='connections'),
-    
     # GitHub OAuth
     path('github/', views.GitHubAuthURLView.as_view(), name='github_auth_url'),
     path('github/callback/', views.GitHubCallbackView.as_view(), name='github_callback'),

@@ -1,118 +1,59 @@
 """
-Authentication views for OAuth flows and user management.
+Authentication views for OAuth flows.
+Simplified version without login/registration - uses session-based user identification.
 """
 
 import logging
-from datetime import datetime, timedelta
+import uuid
+from datetime import timedelta
 from django.conf import settings
 from django.shortcuts import redirect
 from django.utils import timezone
 from rest_framework import status, views
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 import requests
 
 from core.models import User, OAuthToken
-from .backends import generate_auth_token
-from .serializers import UserSerializer, UserRegistrationSerializer, ConnectionStatusSerializer
 from .encryption import encrypt_token, decrypt_token
 
 logger = logging.getLogger(__name__)
 
 
-class RegisterView(views.APIView):
-    """User registration endpoint."""
-    permission_classes = [AllowAny]
+def get_or_create_session_user(request):
+    """Get or create a user based on session."""
+    session_user_id = request.session.get('user_id')
     
-    def post(self, request):
-        serializer = UserRegistrationSerializer(data=request.data)
-        if serializer.is_valid():
-            user = serializer.save()
-            token = generate_auth_token(user)
-            return Response({
-                'user': UserSerializer(user).data,
-                'token': token,
-            }, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-class LoginView(views.APIView):
-    """User login endpoint."""
-    permission_classes = [AllowAny]
-    
-    def post(self, request):
-        email = request.data.get('email')
-        password = request.data.get('password')
-        
-        if not email or not password:
-            return Response(
-                {'error': 'Email and password are required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
+    if session_user_id:
         try:
-            user = User.objects.get(email=email)
-            if user.check_password(password):
-                token = generate_auth_token(user)
-                return Response({
-                    'user': UserSerializer(user).data,
-                    'token': token,
-                })
-            else:
-                return Response(
-                    {'error': 'Invalid credentials'},
-                    status=status.HTTP_401_UNAUTHORIZED
-                )
+            return User.objects.get(id=session_user_id)
         except User.DoesNotExist:
-            return Response(
-                {'error': 'Invalid credentials'},
-                status=status.HTTP_401_UNAUTHORIZED
-            )
-
-
-class MeView(views.APIView):
-    """Get current user info."""
-    permission_classes = [IsAuthenticated]
+            pass
     
-    def get(self, request):
-        return Response(UserSerializer(request.user).data)
-
-
-class ConnectionStatusView(views.APIView):
-    """Get OAuth connection status for GitHub and Jira."""
-    permission_classes = [IsAuthenticated]
+    # Create a new anonymous user
+    user = User.objects.create(
+        email=f"user_{uuid.uuid4().hex[:8]}@local.dev",
+        username=f"Developer_{uuid.uuid4().hex[:6]}",
+    )
+    user.set_unusable_password()
+    user.save()
     
-    def get(self, request):
-        github_token = OAuthToken.objects.filter(
-            user=request.user, provider='github'
-        ).first()
-        
-        jira_token = OAuthToken.objects.filter(
-            user=request.user, provider='jira'
-        ).first()
-        
-        return Response({
-            'github': {
-                'connected': github_token is not None,
-                'expires_at': github_token.expires_at if github_token else None,
-            },
-            'jira': {
-                'connected': jira_token is not None,
-                'expires_at': jira_token.expires_at if jira_token else None,
-                'cloud_id': jira_token.cloud_id if jira_token else None,
-            }
-        })
+    request.session['user_id'] = str(user.id)
+    return user
 
 
 # ==================== GitHub OAuth ====================
 
 class GitHubAuthURLView(views.APIView):
     """Get GitHub OAuth authorization URL."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     def get(self, request):
+        # Get or create session user
+        user = get_or_create_session_user(request)
+        
         scopes = 'read:user repo read:org'
-        state = str(request.user.id)  # Use user ID as state for callback
+        state = str(user.id)
         
         auth_url = (
             f"https://github.com/login/oauth/authorize"
@@ -169,7 +110,6 @@ class GitHubCallbackView(views.APIView):
                     'access_token_encrypted': encrypt_token(access_token),
                     'token_type': token_type,
                     'scope': scope,
-                    # GitHub tokens don't expire unless revoked
                     'expires_at': None,
                 }
             )
@@ -187,12 +127,18 @@ class GitHubCallbackView(views.APIView):
 
 class GitHubDisconnectView(views.APIView):
     """Disconnect GitHub account."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     def post(self, request):
-        OAuthToken.objects.filter(user=request.user, provider='github').delete()
-        request.user.github_connected = False
-        request.user.save()
+        session_user_id = request.session.get('user_id')
+        if session_user_id:
+            OAuthToken.objects.filter(user_id=session_user_id, provider='github').delete()
+            try:
+                user = User.objects.get(id=session_user_id)
+                user.github_connected = False
+                user.save()
+            except User.DoesNotExist:
+                pass
         return Response({'message': 'GitHub disconnected successfully'})
 
 
@@ -200,11 +146,13 @@ class GitHubDisconnectView(views.APIView):
 
 class JiraAuthURLView(views.APIView):
     """Get Jira OAuth authorization URL."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     def get(self, request):
+        user = get_or_create_session_user(request)
+        
         scopes = 'read:jira-work read:jira-user offline_access'
-        state = str(request.user.id)
+        state = str(user.id)
         
         auth_url = (
             f"https://auth.atlassian.com/authorize"
@@ -292,22 +240,35 @@ class JiraCallbackView(views.APIView):
 
 class JiraDisconnectView(views.APIView):
     """Disconnect Jira account."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     def post(self, request):
-        OAuthToken.objects.filter(user=request.user, provider='jira').delete()
-        request.user.jira_connected = False
-        request.user.save()
+        session_user_id = request.session.get('user_id')
+        if session_user_id:
+            OAuthToken.objects.filter(user_id=session_user_id, provider='jira').delete()
+            try:
+                user = User.objects.get(id=session_user_id)
+                user.jira_connected = False
+                user.save()
+            except User.DoesNotExist:
+                pass
         return Response({'message': 'Jira disconnected successfully'})
 
 
 class JiraRefreshTokenView(views.APIView):
     """Refresh Jira access token."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     def post(self, request):
+        session_user_id = request.session.get('user_id')
+        if not session_user_id:
+            return Response(
+                {'error': 'No session found'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         try:
-            oauth_token = OAuthToken.objects.get(user=request.user, provider='jira')
+            oauth_token = OAuthToken.objects.get(user_id=session_user_id, provider='jira')
             refresh_token = decrypt_token(oauth_token.refresh_token_encrypted)
             
             if not refresh_token:
