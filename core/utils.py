@@ -7,12 +7,27 @@ from core.models import User
 
 
 def get_or_create_session_user(request):
-    """Get or create a user based on session."""
-    session_user_id = request.session.get('user_id')
+    """
+    Get or create a user based on session or X-User-ID header.
+    Priority: X-User-ID header > session > create new
+    """
+    # Check for user ID in header (sent by frontend)
+    user_id = request.headers.get('X-User-ID') or request.META.get('HTTP_X_USER_ID')
     
-    if session_user_id:
+    # Also check query params for backwards compatibility
+    if not user_id:
+        user_id = request.query_params.get('user_id') if hasattr(request, 'query_params') else None
+    
+    # Check session
+    if not user_id:
+        user_id = request.session.get('user_id')
+    
+    if user_id:
         try:
-            return User.objects.get(id=session_user_id)
+            user = User.objects.get(id=user_id)
+            # Update session with this user
+            request.session['user_id'] = str(user.id)
+            return user
         except User.DoesNotExist:
             pass
     

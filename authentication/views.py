@@ -41,7 +41,7 @@ class GitHubAuthURLView(views.APIView):
             f"&state={state}"
         )
         
-        return Response({'auth_url': auth_url})
+        return Response({'auth_url': auth_url, 'user_id': str(user.id)})
 
 
 class GitHubCallbackView(views.APIView):
@@ -96,7 +96,7 @@ class GitHubCallbackView(views.APIView):
             user.github_connected = True
             user.save()
             
-            return redirect(f"{settings.FRONTEND_URL}/settings?github=connected")
+            return redirect(f"{settings.FRONTEND_URL}/settings?github=connected&user_id={user.id}")
         
         except Exception as e:
             logger.exception(f"GitHub callback error: {e}")
@@ -143,7 +143,7 @@ class JiraAuthURLView(views.APIView):
             f"&prompt=consent"
         )
         
-        return Response({'auth_url': auth_url})
+        return Response({'auth_url': auth_url, 'user_id': str(user.id)})
 
 
 class JiraCallbackView(views.APIView):
@@ -209,7 +209,7 @@ class JiraCallbackView(views.APIView):
             user.jira_connected = True
             user.save()
             
-            return redirect(f"{settings.FRONTEND_URL}/settings?jira=connected")
+            return redirect(f"{settings.FRONTEND_URL}/settings?jira=connected&user_id={user.id}")
         
         except Exception as e:
             logger.exception(f"Jira callback error: {e}")
