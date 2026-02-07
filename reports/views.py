@@ -6,10 +6,11 @@ import logging
 from datetime import datetime, timedelta
 from django.utils import timezone
 from rest_framework import status, views, generics
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from core.models import WeeklyReport, HygieneAlert
+from core.utils import get_or_create_session_user
 from .serializers import (
     WeeklyReportSerializer, WeeklyReportListSerializer,
     HygieneAlertSerializer, GenerateReportRequestSerializer,
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 class GenerateReportView(views.APIView):
     """Generate a work report for a date range."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     def post(self, request):
         serializer = GenerateReportRequestSerializer(data=request.data)
@@ -30,7 +31,8 @@ class GenerateReportView(views.APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            service = ReportService(request.user)
+            user = get_or_create_session_user(request)
+            service = ReportService(user)
             report = service.generate_report(
                 since=serializer.validated_data['since'],
                 until=serializer.validated_data['until'],
@@ -47,25 +49,27 @@ class GenerateReportView(views.APIView):
 
 class WeeklyReportsListView(generics.ListAPIView):
     """List all weekly reports."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     serializer_class = WeeklyReportListSerializer
     
     def get_queryset(self):
-        return WeeklyReport.objects.filter(user=self.request.user)
+        user = get_or_create_session_user(self.request)
+        return WeeklyReport.objects.filter(user=user)
 
 
 class WeeklyReportDetailView(generics.RetrieveAPIView):
     """Get detailed weekly report."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     serializer_class = WeeklyReportSerializer
     
     def get_queryset(self):
-        return WeeklyReport.objects.filter(user=self.request.user)
+        user = get_or_create_session_user(self.request)
+        return WeeklyReport.objects.filter(user=user)
 
 
 class CreateWeeklyReportView(views.APIView):
     """Create a weekly report for a specific week."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     def post(self, request):
         serializer = GenerateReportRequestSerializer(data=request.data)
@@ -73,7 +77,8 @@ class CreateWeeklyReportView(views.APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            service = ReportService(request.user)
+            user = get_or_create_session_user(request)
+            service = ReportService(user)
             report = service.create_weekly_report(
                 start_date=serializer.validated_data['since'],
                 end_date=serializer.validated_data['until'],
@@ -92,7 +97,7 @@ class CreateWeeklyReportView(views.APIView):
 
 class CurrentWeekReportView(views.APIView):
     """Get or generate report for the current week."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     def get(self, request):
         # Calculate current week bounds (Monday to Sunday)
@@ -105,7 +110,8 @@ class CurrentWeekReportView(views.APIView):
         until = timezone.make_aware(datetime.combine(end_of_week, datetime.max.time()))
         
         try:
-            service = ReportService(request.user)
+            user = get_or_create_session_user(request)
+            service = ReportService(user)
             report = service.generate_report(since, until, sync_first=False)
             return Response(report)
         except Exception as e:
@@ -118,9 +124,11 @@ class CurrentWeekReportView(views.APIView):
 
 class LastWeekReportView(views.APIView):
     """Get or generate report for last week."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     def get(self, request):
+        user = get_or_create_session_user(request)
+        
         # Calculate last week bounds
         today = timezone.now().date()
         start_of_last_week = today - timedelta(days=today.weekday() + 7)
@@ -131,7 +139,7 @@ class LastWeekReportView(views.APIView):
         
         # Check if we have a stored report
         existing = WeeklyReport.objects.filter(
-            user=request.user,
+            user=user,
             start_date=start_of_last_week,
             end_date=end_of_last_week,
         ).first()
@@ -140,7 +148,7 @@ class LastWeekReportView(views.APIView):
             return Response(existing.report_data)
         
         try:
-            service = ReportService(request.user)
+            service = ReportService(user)
             report = service.generate_report(since, until, sync_first=False)
             return Response(report)
         except Exception as e:
@@ -155,7 +163,7 @@ class LastWeekReportView(views.APIView):
 
 class EffortAnalysisView(views.APIView):
     """Get effort vs output analysis for a date range."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     def get(self, request):
         since = request.query_params.get('since')
@@ -171,7 +179,8 @@ class EffortAnalysisView(views.APIView):
             since_dt = datetime.fromisoformat(since.replace('Z', '+00:00'))
             until_dt = datetime.fromisoformat(until.replace('Z', '+00:00'))
             
-            service = AnalyticsService(request.user)
+            user = get_or_create_session_user(request)
+            service = AnalyticsService(user)
             analysis = service.get_effort_analysis_summary(since_dt, until_dt)
             return Response(analysis)
         except ValueError as e:
@@ -188,11 +197,12 @@ class EffortAnalysisView(views.APIView):
 
 class HygieneAlertsView(generics.ListAPIView):
     """List hygiene alerts."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     serializer_class = HygieneAlertSerializer
     
     def get_queryset(self):
-        queryset = HygieneAlert.objects.filter(user=self.request.user)
+        user = get_or_create_session_user(self.request)
+        queryset = HygieneAlert.objects.filter(user=user)
         
         # Filter by resolved status
         resolved = self.request.query_params.get('resolved')
@@ -214,7 +224,7 @@ class HygieneAlertsView(generics.ListAPIView):
 
 class HygieneSummaryView(views.APIView):
     """Get hygiene summary for a date range."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     def get(self, request):
         since = request.query_params.get('since')
@@ -230,7 +240,8 @@ class HygieneSummaryView(views.APIView):
             since_dt = datetime.fromisoformat(since.replace('Z', '+00:00'))
             until_dt = datetime.fromisoformat(until.replace('Z', '+00:00'))
             
-            service = AnalyticsService(request.user)
+            user = get_or_create_session_user(request)
+            service = AnalyticsService(user)
             summary = service.get_hygiene_summary(since_dt, until_dt)
             return Response(summary)
         except ValueError as e:
@@ -245,7 +256,7 @@ class HygieneSummaryView(views.APIView):
 
 class DetectHygieneIssuesView(views.APIView):
     """Detect hygiene issues for a date range."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     def post(self, request):
         serializer = GenerateReportRequestSerializer(data=request.data)
@@ -253,7 +264,8 @@ class DetectHygieneIssuesView(views.APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            service = AnalyticsService(request.user)
+            user = get_or_create_session_user(request)
+            service = AnalyticsService(user)
             alerts = service.detect_hygiene_issues(
                 since=serializer.validated_data['since'],
                 until=serializer.validated_data['until'],
@@ -272,17 +284,18 @@ class DetectHygieneIssuesView(views.APIView):
 
 class ResolveAlertsView(views.APIView):
     """Resolve multiple hygiene alerts."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     def post(self, request):
         serializer = ResolveAlertSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
+        user = get_or_create_session_user(request)
         alert_ids = serializer.validated_data['alert_ids']
         
         updated = HygieneAlert.objects.filter(
-            user=request.user,
+            user=user,
             id__in=alert_ids,
             is_resolved=False,
         ).update(

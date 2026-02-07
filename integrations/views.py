@@ -5,10 +5,11 @@ API views for GitHub and Jira integrations.
 import logging
 from datetime import datetime
 from rest_framework import status, views, generics
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from core.models import Repository, JiraProject, Commit, Ticket
+from core.utils import get_or_create_session_user
 from .serializers import (
     RepositorySerializer, JiraProjectSerializer, 
     CommitSerializer, TicketSerializer, SyncRequestSerializer
@@ -22,26 +23,29 @@ logger = logging.getLogger(__name__)
 
 class GitHubRepositoriesView(generics.ListAPIView):
     """List user's GitHub repositories."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     serializer_class = RepositorySerializer
     
     def get_queryset(self):
-        return Repository.objects.filter(user=self.request.user)
+        user = get_or_create_session_user(self.request)
+        return Repository.objects.filter(user=user)
 
 
 class GitHubSyncRepositoriesView(views.APIView):
     """Sync repositories from GitHub."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     def post(self, request):
-        if not request.user.github_connected:
+        user = get_or_create_session_user(request)
+        
+        if not user.github_connected:
             return Response(
                 {'error': 'GitHub not connected'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
         try:
-            service = GitHubService(request.user)
+            service = GitHubService(user)
             repos = service.sync_repositories()
             return Response({
                 'message': f'Synced {len(repos)} repositories',
@@ -59,11 +63,12 @@ class GitHubSyncRepositoriesView(views.APIView):
 
 class GitHubToggleTrackingView(views.APIView):
     """Toggle repository tracking."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     def post(self, request, repo_id):
+        user = get_or_create_session_user(request)
         try:
-            repo = Repository.objects.get(id=repo_id, user=request.user)
+            repo = Repository.objects.get(id=repo_id, user=user)
             repo.is_tracked = not repo.is_tracked
             repo.save()
             return Response(RepositorySerializer(repo).data)
@@ -76,21 +81,23 @@ class GitHubToggleTrackingView(views.APIView):
 
 class GitHubSyncCommitsView(views.APIView):
     """Sync commits from GitHub for a date range."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     def post(self, request):
         serializer = SyncRequestSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
-        if not request.user.github_connected:
+        user = get_or_create_session_user(request)
+        
+        if not user.github_connected:
             return Response(
                 {'error': 'GitHub not connected'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
         try:
-            service = GitHubService(request.user)
+            service = GitHubService(user)
             since = serializer.validated_data['since']
             until = serializer.validated_data['until']
             
@@ -116,11 +123,12 @@ class GitHubSyncCommitsView(views.APIView):
 
 class CommitsListView(generics.ListAPIView):
     """List commits with optional filters."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     serializer_class = CommitSerializer
     
     def get_queryset(self):
-        queryset = Commit.objects.filter(user=self.request.user)
+        user = get_or_create_session_user(self.request)
+        queryset = Commit.objects.filter(user=user)
         
         # Filter by date range
         since = self.request.query_params.get('since')
@@ -148,26 +156,29 @@ class CommitsListView(generics.ListAPIView):
 
 class JiraProjectsView(generics.ListAPIView):
     """List user's Jira projects."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     serializer_class = JiraProjectSerializer
     
     def get_queryset(self):
-        return JiraProject.objects.filter(user=self.request.user)
+        user = get_or_create_session_user(self.request)
+        return JiraProject.objects.filter(user=user)
 
 
 class JiraSyncProjectsView(views.APIView):
     """Sync projects from Jira."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     def post(self, request):
-        if not request.user.jira_connected:
+        user = get_or_create_session_user(request)
+        
+        if not user.jira_connected:
             return Response(
                 {'error': 'Jira not connected'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
         try:
-            service = JiraService(request.user)
+            service = JiraService(user)
             projects = service.sync_projects()
             return Response({
                 'message': f'Synced {len(projects)} projects',
@@ -185,11 +196,12 @@ class JiraSyncProjectsView(views.APIView):
 
 class JiraToggleTrackingView(views.APIView):
     """Toggle project tracking."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     def post(self, request, project_id):
+        user = get_or_create_session_user(request)
         try:
-            project = JiraProject.objects.get(id=project_id, user=request.user)
+            project = JiraProject.objects.get(id=project_id, user=user)
             project.is_tracked = not project.is_tracked
             project.save()
             return Response(JiraProjectSerializer(project).data)
@@ -202,21 +214,23 @@ class JiraToggleTrackingView(views.APIView):
 
 class JiraSyncDataView(views.APIView):
     """Sync Jira data (tickets, activities, worklogs) for a date range."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     def post(self, request):
         serializer = SyncRequestSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
-        if not request.user.jira_connected:
+        user = get_or_create_session_user(request)
+        
+        if not user.jira_connected:
             return Response(
                 {'error': 'Jira not connected'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
         try:
-            service = JiraService(request.user)
+            service = JiraService(user)
             since = serializer.validated_data['since']
             until = serializer.validated_data['until']
             project_keys = serializer.validated_data.get('project_keys')
@@ -241,11 +255,12 @@ class JiraSyncDataView(views.APIView):
 
 class TicketsListView(generics.ListAPIView):
     """List tickets with optional filters."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     serializer_class = TicketSerializer
     
     def get_queryset(self):
-        queryset = Ticket.objects.filter(user=self.request.user)
+        user = get_or_create_session_user(self.request)
+        queryset = Ticket.objects.filter(user=user)
         
         # Filter by project
         project_id = self.request.query_params.get('project')
@@ -271,9 +286,10 @@ class TicketsListView(generics.ListAPIView):
 
 class TicketDetailView(generics.RetrieveAPIView):
     """Get detailed ticket information."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     serializer_class = TicketSerializer
     lookup_field = 'key'
     
     def get_queryset(self):
-        return Ticket.objects.filter(user=self.request.user)
+        user = get_or_create_session_user(self.request)
+        return Ticket.objects.filter(user=user)
