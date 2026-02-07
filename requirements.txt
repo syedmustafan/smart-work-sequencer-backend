@@ -13,3 +13,5 @@ gunicorn>=21.0
 pyjwt>=2.8
 dj-database-url>=2.0
 whitenoise>=6.0
+cloud-sql-python-connector[pg8000]>=1.0
+pg8000>=1.30

@@ -73,8 +73,21 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 # Database - PostgreSQL (GCP Cloud SQL / Railway)
 DATABASE_URL = os.getenv('DATABASE_URL')
+CLOUD_SQL_CONNECTION_NAME = os.getenv('CLOUD_SQL_CONNECTION_NAME')
 
-if DATABASE_URL:
+if CLOUD_SQL_CONNECTION_NAME:
+    # GCP Cloud SQL with Unix socket
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.getenv('DB_NAME', 'workseq'),
+            'USER': os.getenv('DB_USER', 'workseq_user'),
+            'PASSWORD': os.getenv('DB_PASSWORD', ''),
+            'HOST': f'/cloudsql/{CLOUD_SQL_CONNECTION_NAME}',
+            'PORT': '5432',
+        }
+    }
+elif DATABASE_URL:
     DATABASES = {
         'default': dj_database_url.config(default=DATABASE_URL, conn_max_age=600)
     }
